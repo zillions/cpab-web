@@ -214,6 +214,12 @@ function getStatusStyle(enabled: boolean): string {
     return 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 border-red-100 dark:border-red-900/30';
 }
 
+function isIdentityModelMapping(mapping: Pick<ModelMapping, 'model_name' | 'new_model_name'>): boolean {
+    const source = mapping.model_name.trim().toLowerCase();
+    const target = mapping.new_model_name.trim().toLowerCase();
+    return source !== '' && source === target;
+}
+
 const API_KEY_PROVIDER_LABELS = [
     { labelKey: 'Gemini', value: 'gemini' },
     { labelKey: 'Codex', value: 'codex' },
@@ -1709,6 +1715,7 @@ export function AdminModels() {
     const [providerFilter, setProviderFilter] = useState('');
     const [providerDropdownOpen, setProviderDropdownOpen] = useState(false);
     const [modelSearch, setModelSearch] = useState('');
+    const [showHistoricalDuplicates, setShowHistoricalDuplicates] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [confirmDialog, setConfirmDialog] = useState<{
         title: string;
@@ -1888,8 +1895,41 @@ export function AdminModels() {
         return modelName.includes(normalizedModelSearch) || newModelName.includes(normalizedModelSearch);
     });
 
+    const hiddenHistoricalDuplicateIDs = new Set<number>();
+    const duplicateGroups = new Map<string, ModelMapping[]>();
+    filteredMappings.forEach((mapping) => {
+        const key = [
+            mapping.provider.trim().toLowerCase(),
+            mapping.model_name.trim().toLowerCase(),
+            mapping.new_model_name.trim().toLowerCase(),
+        ].join('\u0000');
+        const existing = duplicateGroups.get(key);
+        if (existing) {
+            existing.push(mapping);
+            return;
+        }
+        duplicateGroups.set(key, [mapping]);
+    });
+    duplicateGroups.forEach((group) => {
+        if (group.length <= 1) {
+            return;
+        }
+        const sorted = [...group].sort((a, b) => {
+            if (a.is_enabled !== b.is_enabled) {
+                return a.is_enabled ? -1 : 1;
+            }
+            return b.id - a.id;
+        });
+        sorted.slice(1).forEach((mapping) => hiddenHistoricalDuplicateIDs.add(mapping.id));
+    });
+
+    const visibleMappings = showHistoricalDuplicates
+        ? filteredMappings
+        : filteredMappings.filter((mapping) => !hiddenHistoricalDuplicateIDs.has(mapping.id));
+    const hiddenHistoricalDuplicateCount = hiddenHistoricalDuplicateIDs.size;
+
     const { tableScrollRef, handleTableScroll, showActionsDivider } = useStickyActionsDivider(
-        filteredMappings.length,
+        visibleMappings.length,
         loading
     );
 
@@ -1905,7 +1945,7 @@ export function AdminModels() {
         });
     }, [mappings]);
 
-    const filteredIds = filteredMappings.map((m) => m.id);
+    const filteredIds = visibleMappings.map((m) => m.id);
     const anyFilteredSelected = filteredIds.some((id) => selectedIds.has(id));
     const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedIds.has(id));
     const selectedCount = selectedIds.size;
@@ -2118,6 +2158,27 @@ export function AdminModels() {
                     </div>
 
                     <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+                        {hiddenHistoricalDuplicateCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setShowHistoricalDuplicates((prev) => !prev)}
+                                className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-border-dark text-slate-700 dark:text-text-secondary hover:bg-gray-50 dark:hover:bg-background-dark transition-colors"
+                                title={
+                                    showHistoricalDuplicates
+                                        ? t('Hide historical duplicate mappings')
+                                        : t('Show historical duplicate mappings')
+                                }
+                            >
+                                <Icon name={showHistoricalDuplicates ? 'visibility_off' : 'visibility'} size={18} />
+                                <span>
+                                    {showHistoricalDuplicates
+                                        ? t('Hide History')
+                                        : t('Show History ({{count}})', {
+                                              count: hiddenHistoricalDuplicateCount,
+                                          })}
+                                </span>
+                            </button>
+                        )}
                         {selectedCount > 0 ? (
                             <div className="text-sm text-slate-700 dark:text-text-secondary">
                                 {t('Selected')}:{" "}
@@ -2201,14 +2262,14 @@ export function AdminModels() {
                                         </div>
                                     </td>
                                 </tr>
-                            ) : filteredMappings.length === 0 ? (
+                            ) : visibleMappings.length === 0 ? (
                                 <tr>
                                     <td colSpan={9} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                                         {t('No model mappings found')}
                                     </td>
                                 </tr>
                             ) : (
-                                filteredMappings.map((mapping) => (
+                                visibleMappings.map((mapping) => (
                                     <tr
                                         key={mapping.id}
                                         className="hover:bg-gray-50 dark:hover:bg-background-dark group"
@@ -2238,8 +2299,19 @@ export function AdminModels() {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white font-mono">
                                             {mapping.model_name}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white font-mono">
-                                            {mapping.new_model_name}
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            {isIdentityModelMapping(mapping) ? (
+                                                <span
+                                                    className="inline-flex px-2.5 py-1 text-xs font-medium rounded-full border bg-slate-50 text-slate-600 dark:bg-slate-900/30 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                                                    title={mapping.new_model_name}
+                                                >
+                                                    {t('Same as source')}
+                                                </span>
+                                            ) : (
+                                                <span className="text-sm text-slate-900 dark:text-white font-mono">
+                                                    {mapping.new_model_name}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-text-secondary font-mono">
                                             {mapping.rate_limit.toLocaleString()}
