@@ -11,8 +11,8 @@ import { useTranslation } from 'react-i18next';
 interface PrepaidCard {
     id: number;
     name: string;
+    activation_key?: string;
     card_sn: string;
-    password: string;
     amount: number;
     balance: number;
     user_group_id: number | null;
@@ -32,10 +32,12 @@ interface ListResponse {
     prepaid_cards: PrepaidCard[];
 }
 
+function getActivationKey(card: Pick<PrepaidCard, 'activation_key' | 'card_sn'>): string {
+    return card.activation_key || card.card_sn;
+}
+
 interface PrepaidCardFormData {
     name: string;
-    card_sn: string;
-    password: string;
     amount: string;
     user_group_id: string;
     valid_days: string;
@@ -44,6 +46,7 @@ interface PrepaidCardFormData {
 
 interface PrepaidCardModalProps {
     title: string;
+    mode: 'create' | 'edit';
     initialData: PrepaidCardFormData;
     userGroups: UserGroup[];
     submitting: boolean;
@@ -55,8 +58,6 @@ interface BatchFormData {
     name: string;
     amount: string;
     count: string;
-    card_sn_prefix: string;
-    password_length: string;
     user_group_id: string;
     valid_days: string;
 }
@@ -212,7 +213,7 @@ function SearchableDropdownMenu({
     );
 }
 
-function PrepaidCardModal({ title, initialData, userGroups, submitting, onClose, onSubmit }: PrepaidCardModalProps) {
+function PrepaidCardModal({ title, mode, initialData, userGroups, submitting, onClose, onSubmit }: PrepaidCardModalProps) {
     const { t } = useTranslation();
     const [formData, setFormData] = useState<PrepaidCardFormData>(initialData);
     const [error, setError] = useState('');
@@ -236,21 +237,11 @@ function PrepaidCardModal({ title, initialData, userGroups, submitting, onClose,
 
     const handleSubmit = () => {
         const name = formData.name.trim();
-        const cardSN = formData.card_sn.trim();
-        const password = formData.password.trim();
         const amount = Number(formData.amount);
         const validDays = Number(formData.valid_days || 0);
 
         if (!name) {
             setError(t('Name is required.'));
-            return;
-        }
-        if (!cardSN) {
-            setError(t('Card SN is required.'));
-            return;
-        }
-        if (!password) {
-            setError(t('Password is required.'));
             return;
         }
         if (!amount || amount <= 0) {
@@ -265,8 +256,6 @@ function PrepaidCardModal({ title, initialData, userGroups, submitting, onClose,
         setError('');
         onSubmit({
             name,
-            card_sn: cardSN,
-            password,
             amount,
             user_group_id: formData.user_group_id ? Number(formData.user_group_id) : 0,
             valid_days: validDays,
@@ -289,6 +278,11 @@ function PrepaidCardModal({ title, initialData, userGroups, submitting, onClose,
                     </button>
                 </div>
                 <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-200">
+                        {mode === 'create'
+                            ? t('The card key will be generated automatically after you save.')
+                            : t('Card keys are read-only. You can only edit the business attributes here.')}
+                    </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                             {t('Name')}
@@ -298,30 +292,6 @@ function PrepaidCardModal({ title, initialData, userGroups, submitting, onClose,
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                             placeholder={t('Enter card name')}
-                            className={inputClassName}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                            {t('Card SN')}
-                        </label>
-                        <input
-                            type="text"
-                            value={formData.card_sn}
-                            onChange={(e) => setFormData({ ...formData, card_sn: e.target.value })}
-                            placeholder={t('Enter card serial number')}
-                            className={inputClassName}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                            {t('Password')}
-                        </label>
-                        <input
-                            type="text"
-                            value={formData.password}
-                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                            placeholder={t('Enter card password')}
                             className={inputClassName}
                         />
                     </div>
@@ -459,8 +429,6 @@ function BatchCreateModal({
         name: '',
         amount: '',
         count: '10',
-        card_sn_prefix: '',
-        password_length: '10',
         user_group_id: '',
         valid_days: '',
     });
@@ -487,7 +455,6 @@ function BatchCreateModal({
         const name = formData.name.trim();
         const amount = Number(formData.amount);
         const count = Number(formData.count);
-        const passwordLength = Number(formData.password_length);
         const validDays = Number(formData.valid_days || 0);
 
         if (!name) {
@@ -502,10 +469,6 @@ function BatchCreateModal({
             setError(t('Count must be positive.'));
             return;
         }
-        if (!passwordLength || passwordLength < 6) {
-            setError(t('Password length must be at least 6.'));
-            return;
-        }
         if (Number.isNaN(validDays) || validDays < 0) {
             setError(t('Validity days cannot be negative.'));
             return;
@@ -516,8 +479,6 @@ function BatchCreateModal({
             name,
             amount,
             count,
-            card_sn_prefix: formData.card_sn_prefix.trim(),
-            password_length: passwordLength,
             user_group_id: formData.user_group_id ? Number(formData.user_group_id) : 0,
             valid_days: validDays,
         });
@@ -528,7 +489,7 @@ function BatchCreateModal({
             <div className="bg-white dark:bg-surface-dark rounded-xl shadow-xl w-full max-w-2xl mx-4 border border-gray-200 dark:border-border-dark max-h-[90vh] flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-border-dark shrink-0">
                     <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                        {t('Batch Create Prepaid Cards')}
+                        {t('Batch Create Cards')}
                     </h2>
                     <button
                         onClick={onClose}
@@ -538,6 +499,9 @@ function BatchCreateModal({
                     </button>
                 </div>
                 <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-200">
+                        {t('Each prepaid card will be created with a random card key in the twt- + 64 hex format.')}
+                    </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                             {t('Name')}
@@ -624,30 +588,6 @@ function BatchCreateModal({
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                            {t('Card SN Prefix (optional)')}
-                        </label>
-                        <input
-                            type="text"
-                            value={formData.card_sn_prefix}
-                            onChange={(e) => setFormData({ ...formData, card_sn_prefix: e.target.value })}
-                            placeholder={t('Enter prefix')}
-                            className={inputClassName}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                            {t('Password Length')}
-                        </label>
-                        <input
-                            type="number"
-                            value={formData.password_length}
-                            onChange={(e) => setFormData({ ...formData, password_length: e.target.value })}
-                            placeholder={t('Enter password length')}
-                            className={inputClassName}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                             {t('Validity Days (0 = Never expires)')}
                         </label>
                         <input
@@ -698,10 +638,10 @@ function BatchResultModal({
     const { t } = useTranslation();
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-white dark:bg-surface-dark rounded-xl shadow-xl w-full max-w-2xl mx-4 border border-gray-200 dark:border-border-dark max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="bg-white dark:bg-surface-dark rounded-xl shadow-xl w-full max-w-lg mx-4 border border-gray-200 dark:border-border-dark max-h-[90vh] flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-border-dark shrink-0">
                     <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                        {t('Prepaid Cards Created')}
+                        {t('Card Keys Created')}
                     </h2>
                     <button
                         onClick={onClose}
@@ -711,28 +651,38 @@ function BatchResultModal({
                     </button>
                 </div>
                 <div className="p-6 space-y-4 overflow-y-auto flex-1">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                            {t('Copy card_sn,password,amount')}
+                            {t('Copy card_key,amount')}
                         </span>
                         <button
                             onClick={onCopy}
-                            className="text-sm font-medium text-primary hover:text-blue-600"
+                            className="inline-flex items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-slate-50 hover:text-blue-600 dark:border-border-dark dark:hover:bg-background-dark"
                         >
                             {t('Copy')}
                         </button>
                     </div>
-                    <div className="border border-gray-200 dark:border-border-dark rounded-lg overflow-hidden">
-                        <div className="max-h-80 overflow-y-auto">
-                            {cards.map((card) => (
-                                <div
-                                    key={card.id}
-                                    className="px-4 py-2 text-xs font-mono text-slate-600 dark:text-text-secondary border-b border-gray-200 dark:border-border-dark last:border-b-0"
-                                >
-                                    {card.card_sn},{card.password},{card.amount}
+                    <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+                        {cards.map((card) => (
+                            <div
+                                key={card.id}
+                                className="rounded-lg border border-gray-200 dark:border-border-dark bg-gray-50 dark:bg-background-dark px-4 py-3"
+                            >
+                                <div className="grid gap-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span className="text-xs font-semibold tracking-wide text-slate-500 dark:text-text-secondary">
+                                            {t('Card Key')}
+                                        </span>
+                                        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 shadow-sm dark:bg-surface-dark dark:text-slate-200">
+                                            ${card.amount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <p className="font-mono text-[13px] leading-6 text-slate-700 break-all dark:text-slate-200">
+                                        {getActivationKey(card)}
+                                    </p>
                                 </div>
-                            ))}
-                        </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
                 <div className="flex gap-3 px-6 py-4 border-t border-gray-200 dark:border-border-dark shrink-0">
@@ -752,8 +702,6 @@ function buildFormData(card?: PrepaidCard): PrepaidCardFormData {
     if (!card) {
         return {
             name: '',
-            card_sn: '',
-            password: '',
             amount: '',
             user_group_id: '',
             valid_days: '',
@@ -762,8 +710,6 @@ function buildFormData(card?: PrepaidCard): PrepaidCardFormData {
     }
     return {
         name: card.name,
-        card_sn: card.card_sn,
-        password: card.password,
         amount: card.amount.toString(),
         user_group_id: card.user_group_id ? card.user_group_id.toString() : '',
         valid_days: card.valid_days ? card.valid_days.toString() : '',
@@ -793,6 +739,7 @@ export function AdminPrepaidCards() {
     const [batchSubmitting, setBatchSubmitting] = useState(false);
     const [batchResult, setBatchResult] = useState<PrepaidCard[]>([]);
     const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
+    const [copiedCardKeyId, setCopiedCardKeyId] = useState<number | null>(null);
     const [searchInput, setSearchInput] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
@@ -814,7 +761,7 @@ export function AdminPrepaidCards() {
         setLoading(true);
         const params = new URLSearchParams();
         if (searchQuery.trim()) {
-            params.set('redeemed_user', searchQuery.trim());
+            params.set('q', searchQuery.trim());
         }
         if (statusFilter === 'redeemed') {
             params.set('redeemed', 'true');
@@ -884,10 +831,12 @@ export function AdminPrepaidCards() {
         }
         setSubmitting(true);
         try {
-            await apiFetchAdmin('/v0/admin/prepaid-cards', {
+            const res = await apiFetchAdmin<PrepaidCard>('/v0/admin/prepaid-cards', {
                 method: 'POST',
                 body: JSON.stringify(payload),
             });
+            setBatchResult(res ? [res] : []);
+            setBatchResultOpen(true);
             setCreateOpen(false);
             fetchCards();
         } catch (err) {
@@ -937,9 +886,20 @@ export function AdminPrepaidCards() {
 
     const handleCopyBatch = async () => {
         if (batchResult.length === 0) return;
-        const lines = batchResult.map((card) => `${card.card_sn},${card.password},${card.amount}`);
+        const lines = batchResult.map((card) => `${getActivationKey(card)},${card.amount}`);
         await navigator.clipboard.writeText(lines.join('\n'));
         showToast(t('Copied to clipboard'));
+    };
+
+    const handleCopyCardKey = async (card: PrepaidCard) => {
+        try {
+            await navigator.clipboard.writeText(getActivationKey(card));
+            setCopiedCardKeyId(card.id);
+            showToast(t('Copied to clipboard'));
+            setTimeout(() => setCopiedCardKeyId((current) => (current === card.id ? null : current)), 2000);
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     const handleDelete = async (card: PrepaidCard) => {
@@ -1000,16 +960,19 @@ export function AdminPrepaidCards() {
                                 className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-background-dark text-slate-900 dark:text-white rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors font-medium border border-gray-200 dark:border-border-dark"
                             >
                                 <Icon name="library_add" size={18} />
-                                {t('Batch Create')}
+                                {t('Batch Create Cards')}
                             </button>
                         )}
                         {canCreateCard && (
                             <button
-                                onClick={() => setCreateOpen(true)}
+                                onClick={() => {
+                                    setBatchResult([]);
+                                    setCreateOpen(true);
+                                }}
                                 className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
                             >
                                 <Icon name="add" size={18} />
-                                {t('New Card')}
+                                {t('Create Card')}
                             </button>
                         )}
                     </div>
@@ -1023,7 +986,7 @@ export function AdminPrepaidCards() {
                             </div>
                             <input
                                 className="block w-full p-2.5 pl-10 text-sm text-slate-900 dark:text-white bg-gray-50 dark:bg-background-dark border border-gray-300 dark:border-border-dark rounded-lg focus:ring-primary focus:border-primary placeholder-gray-400 dark:placeholder-gray-500"
-                                placeholder={t('Search by redeemed username...')}
+                                placeholder={t('Search by card key, name, or redeemed username...')}
                                 type="text"
                                 value={searchInput}
                                 onChange={(e) => setSearchInput(e.target.value)}
@@ -1075,8 +1038,7 @@ export function AdminPrepaidCards() {
                             <tr>
                                 <th className="px-6 py-4">{t('ID')}</th>
                                 <th className="px-6 py-4">{t('Name')}</th>
-                                <th className="px-6 py-4">{t('Card SN')}</th>
-                                <th className="px-6 py-4">{t('Password')}</th>
+                                <th className="px-6 py-4">{t('Card Key')}</th>
                                 <th className="px-6 py-4">{t('Amount')}</th>
                                 <th className="px-6 py-4">{t('Balance')}</th>
                                 <th className="px-6 py-4">{t('User Group')}</th>
@@ -1099,14 +1061,14 @@ export function AdminPrepaidCards() {
                             {loading ? (
                                 [...Array(5)].map((_, i) => (
                                     <tr key={i}>
-                                        <td colSpan={14} className="px-6 py-4">
+                                        <td colSpan={13} className="px-6 py-4">
                                             <div className="animate-pulse h-4 bg-slate-200 dark:bg-border-dark rounded"></div>
                                         </td>
                                     </tr>
                                 ))
                             ) : paginatedCards.length === 0 ? (
                                 <tr>
-                                    <td colSpan={14} className="px-6 py-8 text-center text-slate-500 dark:text-text-secondary">
+                                    <td colSpan={13} className="px-6 py-8 text-center text-slate-500 dark:text-text-secondary">
                                         {t('No prepaid cards found')}
                                     </td>
                                 </tr>
@@ -1122,11 +1084,23 @@ export function AdminPrepaidCards() {
                                         <td className="px-6 py-4 text-slate-600 dark:text-text-secondary">
                                             {card.name}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-slate-600 dark:text-text-secondary font-mono text-xs">
-                                            {card.card_sn}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-slate-600 dark:text-text-secondary font-mono text-xs">
-                                            {card.password}
+                                        <td className="px-6 py-4 max-w-[18rem] text-slate-600 dark:text-text-secondary font-mono text-xs">
+                                            <div className="flex items-start gap-2">
+                                                <span className="min-w-0 flex-1 break-all leading-5">
+                                                    {getActivationKey(card)}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCopyCardKey(card)}
+                                                    className="mt-0.5 shrink-0 rounded p-1 text-gray-400 transition-colors hover:text-primary hover:bg-slate-100 dark:hover:bg-background-dark"
+                                                    title={t('Copy')}
+                                                >
+                                                    <Icon
+                                                        name={copiedCardKeyId === card.id ? 'check' : 'content_copy'}
+                                                        size={14}
+                                                    />
+                                                </button>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-slate-600 dark:text-text-secondary font-mono">
                                             ${card.amount.toFixed(2)}
@@ -1261,7 +1235,8 @@ export function AdminPrepaidCards() {
 
             {createOpen && (
                 <PrepaidCardModal
-                    title={t('New Prepaid Card')}
+                    title={t('Create Card')}
+                    mode="create"
                     initialData={buildFormData()}
                     userGroups={userGroups}
                     submitting={submitting}
@@ -1272,6 +1247,7 @@ export function AdminPrepaidCards() {
             {editCard && (
                 <PrepaidCardModal
                     title={t('Edit Prepaid Card #{{id}}', { id: editCard.id })}
+                    mode="edit"
                     initialData={buildFormData(editCard)}
                     userGroups={userGroups}
                     submitting={submitting}

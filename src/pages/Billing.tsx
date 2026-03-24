@@ -37,7 +37,6 @@ interface PlanItem {
 interface PrepaidCard {
     id: number;
     name: string;
-    card_sn: string;
     amount: number;
     balance: number;
     valid_days: number;
@@ -114,8 +113,7 @@ export function Billing() {
     const [availableBalance, setAvailableBalance] = useState(0);
     const [redeemOpen, setRedeemOpen] = useState(false);
     const [redeemSubmitting, setRedeemSubmitting] = useState(false);
-    const [cardSN, setCardSN] = useState('');
-    const [password, setPassword] = useState('');
+    const [activationKey, setActivationKey] = useState('');
     const [redeemMessage, setRedeemMessage] = useState('');
     const [bills, setBills] = useState<Bill[]>([]);
     const [billLoading, setBillLoading] = useState(false);
@@ -363,10 +361,9 @@ export function Billing() {
     }, [billPage, totalPages]);
 
     const handleRedeem = async () => {
-        const snTrim = cardSN.trim();
-        const passTrim = password.trim();
-        if (!snTrim || !passTrim) {
-            setRedeemMessage(t('Card number and password are required.'));
+        const keyTrim = activationKey.trim();
+        if (!keyTrim) {
+            setRedeemMessage(t('Card key is required.'));
             return;
         }
         setRedeemSubmitting(true);
@@ -375,18 +372,17 @@ export function Billing() {
             const res = await apiFetch<PrepaidCardResponse>('/v0/front/prepaid-card/redeem', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ card_sn: snTrim, password: passTrim }),
+                body: JSON.stringify({ activation_key: keyTrim }),
             });
             if (res.card) {
                 setCards((prev) => [res.card as PrepaidCard, ...prev]);
             }
             await loadCards();
             setRedeemOpen(false);
-            setCardSN('');
-            setPassword('');
+            setActivationKey('');
         } catch (err) {
             console.error(err);
-            setRedeemMessage(t('Redeem failed. Please check card info and try again.'));
+            setRedeemMessage(t('Redeem failed. Please check the card key and try again.'));
         } finally {
             setRedeemSubmitting(false);
         }
@@ -501,7 +497,7 @@ export function Billing() {
                                     ${availableBalance.toFixed(2)}
                                 </p>
                                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                                    {t('From active prepaid cards')}
+                                    {t('From redeemed card keys')}
                                 </p>
                             </div>
                         </div>
@@ -576,7 +572,7 @@ export function Billing() {
                 <div className="pt-6">
                     <section className="flex flex-col gap-4 w-full">
                         <h2 className="text-[22px] font-bold leading-tight tracking-[-0.015em] text-slate-900 dark:text-white">
-                            {t('Prepaid Card')}
+                            {t('Prepaid Cards')}
                         </h2>
                         {(cardLoading || cards.length > 0) && (
                             <div className="rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark shadow-sm overflow-hidden">
@@ -585,7 +581,6 @@ export function Billing() {
                                         <thead className="bg-slate-50 dark:bg-surface-dark border-b border-slate-200 dark:border-border-dark text-slate-500 dark:text-slate-400">
                                             <tr>
                                                 <th className="px-6 py-3 font-medium">{t('Name')}</th>
-                                                <th className="px-6 py-3 font-medium">{t('Card SN')}</th>
                                                 <th className="px-6 py-3 font-medium">{t('Amount')}</th>
                                                 <th className="px-6 py-3 font-medium">{t('Balance')}</th>
                                                 <th className="px-6 py-3 font-medium">{t('Valid Days')}</th>
@@ -596,7 +591,7 @@ export function Billing() {
                                         <tbody className="divide-y divide-slate-100 dark:divide-border-dark text-slate-700 dark:text-slate-300">
                                             {cardLoading ? (
                                                 <tr>
-                                                    <td colSpan={7} className="px-6 py-4 text-center">
+                                                    <td colSpan={6} className="px-6 py-4 text-center">
                                                         {t('Loading...')}
                                                     </td>
                                                 </tr>
@@ -605,9 +600,6 @@ export function Billing() {
                                                     <tr key={card.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
                                                         <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
                                                             {card.name || t('Prepaid Card')}
-                                                        </td>
-                                                        <td className="px-6 py-4 font-mono text-xs text-slate-800 dark:text-slate-200">
-                                                            {card.card_sn}
                                                         </td>
                                                         <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
                                                             ${card.amount.toFixed(2)}
@@ -653,7 +645,7 @@ export function Billing() {
                             }}
                         >
                             <Icon name="add" size={20} />
-                            {t('Add Prepaid Card')}
+                            {t('Redeem Card')}
                         </button>
                     </section>
                 </div>
@@ -882,7 +874,7 @@ export function Billing() {
                         <div className="relative bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-border-dark shadow-2xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col overflow-hidden">
                             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-border-dark shrink-0">
                                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                                    {t('Bind Prepaid Card')}
+                                    {t('Redeem Card')}
                                 </h3>
                                 <button
                                     onClick={() => {
@@ -898,25 +890,17 @@ export function Billing() {
                                 </button>
                             </div>
                             <div className="px-6 py-5 flex flex-col gap-3 flex-1 overflow-y-auto">
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
+                                    {t('Enter the card key you received to add the balance to your account.')}
+                                </p>
                                 <label className="text-sm text-slate-700 dark:text-slate-300 flex flex-col gap-1">
-                                    {t('Card Number')}
+                                    {t('Card Key')}
                                     <input
                                         type="text"
-                                        value={cardSN}
-                                        onChange={(e) => setCardSN(e.target.value)}
+                                        value={activationKey}
+                                        onChange={(e) => setActivationKey(e.target.value)}
                                         className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-background-dark text-slate-900 dark:text-white"
-                                        placeholder={t('Enter card SN')}
-                                        disabled={redeemSubmitting}
-                                    />
-                                </label>
-                                <label className="text-sm text-slate-700 dark:text-slate-300 flex flex-col gap-1">
-                                    {t('Password')}
-                                    <input
-                                        type="password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-background-dark text-slate-900 dark:text-white"
-                                        placeholder={t('Enter card password')}
+                                        placeholder={t('Enter card key')}
                                         disabled={redeemSubmitting}
                                     />
                                 </label>
@@ -944,7 +928,7 @@ export function Billing() {
                                     className="px-4 py-2 rounded-lg bg-primary text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                     disabled={redeemSubmitting}
                                 >
-                                    {redeemSubmitting ? t('Binding...') : t('Bind Card')}
+                                    {redeemSubmitting ? t('Redeeming...') : t('Redeem')}
                                 </button>
                             </div>
                         </div>
